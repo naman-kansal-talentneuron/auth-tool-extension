@@ -1,0 +1,28 @@
+.validatorcontainer{
+  
+}
+
+.validatorcontainer .harvestor{
+  font-weight: bold;
+  color:black;
+  margin-bottom: 10px;
+  border-bottom: 2px solid black;
+}
+
+.validatorcontainer .error{
+  padding: 0px 10px 10px 10px;
+  color: #f44336;
+  /* color: white; */
+}
+
+.validatorcontainer .extractor{
+  font-weight: normal;
+  font-weight: bold;
+  color:black
+}
+
+.validatorcontainer  .warning{
+  color: #ff9800;
+  padding: 0px 10px 10px 10px;
+  /* color: white; */
+}

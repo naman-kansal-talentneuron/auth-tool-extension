@@ -1,0 +1,19 @@
+{
+    "alt_w":"openWorkspaceTab",
+    "alt_p":"openProjectTab",
+    "alt_b":"openDebugTab",
+    "alt_m":"selectProject",
+    "alt_n":"saveProject",
+    "alt_o":"exportProject",  
+    "alt_q":"focusProjectEditor", 
+    "alt_c":"focusNewSource",    
+    "alt_s":"createNewSource",
+    "alt_t": "focusOnFirstTreeNode",
+    "alt_0": "openContextMenuForSelectedNode",
+    "alt_1": "executeFirstCtxMenuItem",
+    "alt_2": "executeSecondCtxMenuItem",
+    "alt_3": "executeThirdCtxMenuItem",
+    "alt_4": "executeFourthCtxMenuItem",
+    "alt_x": "togglePointAndClick"
+    
+}

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>UH Authoring Tool</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script nonce="r@nd0m" src="./lib/js/jquery-1.12.4.js"></script>
+  <script nonce="r@nd0m" src="./lib/js/jquery-ui.js"></script>
+
+  <!-- Third Party Plugin : Gives a code editor look and functionality for python editor text area -->
+  <script src="./js/component/code-editor/codemirror.js"></script>
+  <link href="./js/component/code-editor/codemirror.css" rel="stylesheet"/>
+  <script src="./js/component/code-editor/python.js"></script>
+  <script src="./js/component/code-editor/indent-fold.js"></script>
+  <script src="./js/component/code-editor/placeholder.js"></script>
+  <link href="./js/component/code-editor/eclipse.css" rel="stylesheet"/>
+  <link href="./js/component/code-editor/duotone-light.css" rel="stylesheet"/>
+
+  <link rel="stylesheet" href="./js/component/code-editor/show-hint.css" />
+  <link rel="stylesheet" href="./js/component/code-editor/fullscreen.css" />
+  <script src="./js/component/code-editor/javascript.js"></script>
+  <script src="./js/component/code-editor/closebrackets.js"></script>
+  <script src="./js/component/code-editor/matchbrackets.js"></script>
+  <script src="./js/component/code-editor/show-hint.js"></script>
+  <script src="./js/component/code-editor/javascript-hint.js"></script>
+  <script src="./js/component/code-editor/active-line.js"></script>
+  <script src="./js/component/code-editor/beautify.min.js"></script>
+  <script src="./js/component/code-editor/fullscreen.js"></script>
+
+  <script src="./lib/js/bootstrap.min.js"></script>
+  <script type="module" src="./js/container/editor/base-editor.js"></script>
+  <script type="module" src="./js/container/editor/editor-factory.js"></script>
+  <script type="module" src="./js/container/editor/extractor-field-editor.js"></script>
+  <script type="module" src="./js/container/editor/harvester-node-editor.js"></script>
+  <script type="module" src="./js/debug.js"></script>
+  <script type="module" src="./js/panel.js"></script>
+  <script type="module" src="./js/utils.js"></script>
+  <script type="module" src="./js/debug-integration/debugutil-listener.js"></script>
+  <script type="module" src="./js/auth-script-obj-manager.js"></script>
+  <script type="module" src="./js/component/base-component.js"></script>
+  <script type="module" src="./js/component/drop-down.js"></script>
+  <script type="module" src="./js/config/meta-data.js"></script>
+  <script type="module" src="./js/component/text-box.js"></script>
+  <script type="module" src="./js/component/keyvalue-list.js"></script>
+  <script type="module" src="./js/project.js"></script>
+  <link rel="stylesheet" href="./lib/css/bootstrap.css">
+  <link rel="stylesheet" href="./css/project.css">
+  <link rel="stylesheet" href="./css/panel.css">
+  <link rel="stylesheet" href="./css/treeview.css">  
+  <link rel="stylesheet" href="./css/validator.css">  
+  <link rel="stylesheet" href="./css/confirm-dialog.css">  
+  <link rel="stylesheet" href="./css/common.css">  
+  <link rel="stylesheet" href="./css/error-dialog.css">  
+  <link rel="stylesheet" href="./css/code-editor.css">
+  <link rel="stylesheet" href="././js/component/treeview-checkbox/treeview-checkbox.css">  
+  <link href="./lib/css/jquery-ui.css" rel="stylesheet">
+</head>
+
+<body>
+
+  <div style="font-size: 11px;" class="bodytext">
+    <ul class="nav nav-tabs" id="uh-tabs">
+      <li id="workspace-tab" class="tab-li active"><a data-toggle="tab" href="#workspace">Workspace</a></li>
+      <li id="project-tab" class="tab-li"><a data-toggle="tab" href="#project" id="selectedTab"> 
+            <span id="sp_projectName">Project</span>            
+            <span id="sp_dirtyflag" style="display: none;" class="spanDirtyFlag">[auto-saved]</span>
+            <span id="code_editor" style="float : right">
+            </span>
+         </a></li>
+         <li id="editor-tab" class="tab-li"><a data-toggle="tab" href="#pyEditor" id="selectedTab"> 
+            Python Script Editor
+       </a></li>
+      <!-- <li id="debug-tab" class="tab-li"><a data-toggle="tab" href="#debug">Debug</a></li> -->
+
+    </ul>
+
+    <div class="tab-content">
+      <div id="editor" class="tab-pane">
+        <!-- This div is for code editor tab-->
+      </div>
+      <div id="workspace" class="tab-pane active">
+        <!-- This div is for workspace tab-->
+      </div>
+      <div id="project" class="tab-pane">
+        <!-- This div is for project tab-->
+
+
+      </div>
+      <div id="pyEditor" class="tab-pane">
+        <!-- This div is for Python custom script Editor tab-->
+      </div>
+      <!-- This div is for debug tab-->
+      <!-- <div id="debug" class="tab-pane">      
+        <h3>
+          <div id="selected-project">
+            <h3>Project</h3>
+            <button id='load_json'>Click to load project</button>
+          </div>
+        </h3>
+      </div> -->
+    </div>
+  </div>
+  <!-- <script>
+  // $("#project-tab").trigger("click");
+</script>
+<script src="auth-tool.js"></script>   
+<script src="./js/panel.js"></script> -->
+
+</body>
+
+</html>

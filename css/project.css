@@ -1,0 +1,220 @@
+.treeContainer {
+    border-left: 1px solid #ddd;
+    border-right: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 3px;    
+    margin-left: 1px;
+    margin-right: 0px;
+    padding-bottom: 13%;
+    overflow-y:scroll;
+    overflow-x:scroll;
+    height:500px;
+    height: 600px;
+    max-height: 600px;
+}
+
+.projContainer {
+    border-left: 1px solid #ddd;
+    border-right: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 3px;    
+    height: 500px;
+    margin-left: 0px;
+    margin-right: 0px;
+    /* width: 80%; */
+    max-width: 57%;
+    overflow-y:scroll;
+}
+
+
+.firstrow {
+    margin-top: 7px;
+}
+.btn {
+    border-radius: 0px;
+    text-align: center;
+    font-weight: 500;
+    line-height: 19px;
+    height: 32px;
+    font-size: 12px;
+}
+
+.btn-primary-outline {
+    color: #002856;
+    background-color: transparent;
+    border: 2px solid #002856;
+}
+
+ .btn.btn-primary-outline:focus, .btn.btn-primary-outline:hover {
+    background-color: #002856!important;
+    border: 2px solid #002856!important;
+    color: #fff;
+ }
+ .btn.btn-primary-outline {
+    color: #002856;
+    background-color: #fff;
+    border: 2px solid #002856;
+ }
+.inputText{
+    border: 2px solid #d3d3d3;
+    height: 25px;
+    font-size: 12px;
+    padding: 0 5px;
+    color: #616161;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+    background-color: #fff;
+    border-radius: 0px;   
+    width:120px;
+}
+
+
+.startURLText{
+    border: 2px solid #d3d3d3;
+    /* height: 23px; */
+    font-size: 11px;
+    padding: 0 5px;
+    color: #616161;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+    background-color: #fff;
+    border-radius: 0px;     
+    width: 340px;  
+}
+
+.selectorInputText{
+    border: 2px solid #d3d3d3;
+    /* height: 23px; */
+    font-size: 11px;
+    padding: 0 5px;
+    color: #616161;
+    -webkit-box-shadow: none;
+    box-shadow: none;
+    background-color: #fff;
+    border-radius: 0px;       
+}
+
+.Dropdown-menu {
+    max-height: 368px;
+    background-color: #fff;
+    border: 2px solid #d3d3d3;
+    -webkit-box-shadow: 0 1px 3px 0 rgba(97,97,97,.28);
+    box-shadow: 0 1px 3px 0 rgba(97,97,97,.28);
+    padding-bottom: 10px;
+    padding-top: 10px;    
+    -webkit-box-sizing: border-box;
+    box-sizing: border-box;
+    margin-top: 0;
+    overflow-y: auto;
+    position: absolute;
+    top: 100%;
+    width: 120px;    
+    z-index: 1000;
+}
+.Dropdown-control {
+    position: relative;
+    overflow: hidden;
+    font-weight: 400;
+    font-size: 12px;
+    height: 25px;
+    background-color: #fff;
+    border: 2px solid #d3d3d3;    
+    -webkit-box-sizing: border-box;    
+    box-sizing: border-box;
+    color: #616161;
+    cursor: default;
+    outline: none;
+    padding: 3px 3px 3px 3px;
+    -webkit-transition: all .2s ease;
+    -o-transition: all .2s ease;
+    transition: all .2s ease;
+    border-radius: 0px;
+    width: 180px;
+}
+.formLabel{    
+    width: 150px;
+    /* margin-left: 10px;*/
+    text-align: left; 
+    padding-top: 3px;
+}
+.formControl{    
+    min-width: 220px;
+    /* margin-left: 20px; */
+}
+
+.projecttab {
+    font-size: 11px!important;
+    width: 100%;
+    font-weight: 500;
+}
+
+.divInline {
+    display: inline;
+}
+.show-div {
+    display: block;
+}
+.hide-div {
+    display: none;
+}
+
+#btnSubmit {
+    margin-left: 450px;
+} 
+
+.spanDirtyFlag{
+    color:red; font-weight: 700 ; float: right;
+}
+
+/*
+ *  STYLE 3
+ */
+ .scrollbar
+ {
+     overflow-y: scroll;
+     overflow-x: auto;
+ }
+ #style-3::-webkit-scrollbar-track
+ {
+     -webkit-box-shadow: inset 0 0 6px rgba(0,0,0,0.3);
+     background-color: #F5F5F5;
+ }
+ 
+ #style-3::-webkit-scrollbar
+ {
+     width: 6px;
+     background-color: #F5F5F5;
+ }
+ 
+ #style-3::-webkit-scrollbar-thumb
+ {
+     background-color: #948f8f;
+ }
+  
+
+.export-loader
+ {
+    margin-left: 10px;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    vertical-align: text-bottom;
+    border: .25em solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: export-loader .75s linear infinite;
+}
+
+  @keyframes export-loader {
+    to { transform: rotate(360deg); }
+  }
+
+  .disable{
+      display : none
+  }
+
+  .enable{
+      display : block
+  }
+
+  

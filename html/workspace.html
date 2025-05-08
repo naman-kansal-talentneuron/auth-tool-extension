@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+</head>
+
+<body>
+    <div class="workspace">
+        <div class="title">
+            Load Project From File <span id="authToolVersion"> Version: <span id="versionNumber"> </span> </span>
+        </div>
+        <div class="containerblock">
+
+            <div class="row">
+                <div class="col-md-4">
+                    <form name="scriptform">
+                        <div>
+                            <input type="radio" name="ROOTPATH" id="radiodefaultrootpath" value="Default Git Path"
+                                checked>
+                            <label>Default Git script path</label>
+                        </div>
+                        <div>
+                            <input type="radio" name="ROOTPATH" id="radiocustomrootpath" value="Custom Path">
+                            <label>Custom script path</label>
+                        </div>
+                    </form>
+                </div>
+                <div class="col-md-8">
+                    <div id="scriptPathContainer" class="row">
+                        <label for="automplete-1">Script Path : </label>
+                        <input id="scriptrootPath" class="toolinput min-width-50percent"
+                            placeholder="Enter custom script path">
+                        <button id="applyScriptPathBtn" class="button3" style="margin-left: 20px;"
+                            disabled>Apply</button>
+                    </div>
+                    <div class="row" style="padding-top: 5px;">
+                        <label for="automplete-1">Search Project : </label>
+                        <input id="automplete-1" class="toolinput" placeholder="Search Project to Load">
+                        <label for="selectProjectSearchFile" id="errorMsgWsFileLbl"
+                            style="display: none;">Harvester/Extractor file (s) for the source not present !</label>
+                        <label for="selectProjectSearchJson" id="errorMsgWsInvalidFileLbl"
+                            style="display: none;">Harvester/Extractor file (s) is not a valid JSON !</label>
+                        <div id="log-list" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="workspace">
+        <div class="title">Create New Project</div>
+        <div class="containerblock">
+            <div class="row">
+                <div class="col-md-4">
+                    <label for="sourceNameLbl">Source Name : </label>
+                    <input id="sourceNameTxt" class="toolinput" placeholder="Enter New Source Name">
+                </div>
+                <div class="col-md-8">
+                    <label for="startUrlLbl">Start URL : </label>
+                    <input id="startUrlTxt" class="input  toolinput min-width-50percent" placeholder="Enter Start URL">
+                    <button id="createProjBtn" style="margin-left: 20px;" class="button3" disabled>Create New Project</button>
+                </div>
+                <!-- <div style="padding-top:10px">
+                    
+                </div> -->
+            </div>
+        </div>
+    </div>
+
+        <div class="workspace" id="restoreSourceSection">
+            <div class="title">Restore Previous Source Sessions</div>
+            <div class="containerblock">
+                <div class="row">
+                    <label for="restoredsourceNameLbl">Select Source Name : </label>
+                    <select id="restored-source-select" class="select-css" style="width: 200px;display: inline-block;">
+                        <option value="">-- select --</option>
+                    </select>
+                    <button id="clearPreviousSessionBtn" style="margin-left:15px" class="button3" disabled="">Clear
+                        Sessions</button>
+                </div>
+            </div>
+        </div>
+</body>
+
+</html>

@@ -1,0 +1,2 @@
+uh_chrome_ext_repo_path=C:\UH Script Auth\tnuh-prod-scripts\root,
+default_python_custom_utils="import collectionutil\nimport formatdateutil\nimport locationutil\nimport regexutil\nimport stringutil\nimport tablescanner\nimport urlutil\nimport xpathutil\n",

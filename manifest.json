@@ -1,0 +1,82 @@
+{
+  "name": "UH Script Auth Tool",
+  "manifest_version": 3,
+  "version": "4.4.0", 
+  "description": "Extension for Script UH Auth Tool!",
+  "background": {
+    "service_worker": "background.js", 
+    "type": "module" 
+  },
+  "permissions": [
+    "storage",
+    "notifications",
+    "cookies",
+    "downloads",
+    "downloads.open",
+    "downloads.shelf",
+    "tabs",
+    "scripting",
+    "activeTab",
+    "userScripts",
+    "debugger",
+    "sidePanel"
+  ],
+  "side_panel": {
+    "default_path": "auth-tool-panel.html"
+  },
+  "host_permissions": [
+    "<all_urls>",
+    "file://*/*"
+  ],
+  "content_scripts": [
+    {
+      "js": [
+        "./lib/js/jquery-3.1.0.min.js",
+        "./content.js",
+        "./js/component/UH_DevTool_Function_Def.js"
+      ],
+      "css": [
+        "./js/component/UH_Script.css"
+      ],
+      "matches": [
+        "<all_urls>",
+        "file://*/*"
+      ],
+      "all_frames": false,
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "./js/component/drop-down.js",
+        "./js/component/base-component.js",
+        "./js/component/text-box.js",
+        "./js/component/keyvalue-list.js",
+        "./js/config/meta-data.js",
+        "./js/document/.*",
+        "./js/utils.js",
+        "./js/auth-script-obj-manager.js",
+        "./js/container/editor/.*",
+        "./js/container/options/.*",
+        "./js/component/.*",
+        "./js/element/.*",
+        "./js/extract/*",
+        "./js/harvest/*",
+        "./js/payload/*",
+        "./js/proxy/*",
+        "./keyboard-shortcut-config.json",
+        "./js/container/editor/loader.gif"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "action": {
+    
+    "default_title": "UH Script Auth Tool" 
+    
+  },
+  "key": "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCudYgSMVu6vjcMU4xyQECShSKuGu4B8Gp2i6FPPw+Hd33l16z/6hu9BOTBGVZd8kPrsSFA5YqEprPikJMCc/6AOCfHtF9EsEeRMYbQ2uK8k25GRNRgah4s30U/N1gNbfcpNBFg8vEq0xwPgZU2sRtbAngDlDM/pjWAwvsLMg4DM6dBUvc3OdJk/sg1E7hMiKBJPnw5zAPU129PmCW4muHxk0AJUBqT3lCz9UwKq1+1XOBD327bbxyZgtR7UCHj7E3Tlitay/PZJu6N1r+efggkACM5htfiLPsGyAWRmua7Sb3UWJiVn4TtnpzNg/ROWF6jPJzAjFnu4VGjXFOpJRi3AgMBAAECggEAQJ9gq/yEkgPruDEqkRej06JlWkC3cRhxF0BZnFUrl253wC/H8XPymm25np2YFGytJB0UyEk+qixl7cLH8dytpSkn8x2pPHRfzjSeT7cEzf1+l6DfWmd0jgKWT/hcMX1OVIDo/xR+qPJSLpw9fWjVTTz437qB0U3r+6o9+8Oq1Rwrv+UHd7WWiF/6Sxh00GPerJDXKlLYhDvAFHW+u2+TDCnf7dX9CbIf4ekFAfteC8CXzFA/RLU/OnfFSodNrsxOdSK2j5+gzyVgzruI+vnFr4aZcgbnmicsmsjUxLyQZBE7nYcDSQ5yyGBgiCjHx9V23wqB1+hdOPvu6NUHDaFFYQKBgQDpSGlkAeYGHGG8JcSW77Rnm0ocAyrTmLiU1tXqO/Gk9Kf2/uEEGF3PPQxd5rbqv8acZHsICGeLhNiG6D1SFUZ0Q5SH9XY8FlBXdhzzilkPPOvwCEiQuZ84NXGFXVeuO8BEOqLUtQC4yzzblvFsZKQkvzkajMdO1OWY5dGdLNx2/QKBgQC/cq6yPwSZefB/DnqJPzXW5eR56Sm+DxwmhduiWvnSL91dSnzPB7jtk1SsY9BZYcFAvdt8EuMUkE9csYW2TrCtYhm6JjVGjwQllLTH1YSXR+Hzk3A0KmFmKpQ3l9bYJhhOH9HZeUHUtaWH7Mhwia+D9MmVfvTH7ygj1NOlX7kuwwKBgQCEsJBptv68iRY6a40XgT6vE9AigNayRpLu7gf81J3NAvAq+KzKpIVvZD0NiDaQ7gYtXKXyWr1yyVxT1/NRJhLN/MaWUtMuuE54gRFUoWOo3DEjdcK4tyxOT2/DuOUvkIL7DBMkQ9QmSEvUZ1XpHpGS6UW0yVBwkX4K6uXArgy0jQKBgHoGcusR17CrVGrno5rPO1XZ+iLqRrzpjJvRPgjhy9H4yDOqQpsC5RAolBO9GxOdhzvox3jx4OM+iBcg34Uv6tTYbmWD7PkoNxBtFD07DuQN4SsLkrztNl+UTByTH1FuFpfVGEBxVVBq5zMX7TotyD1nTQWIgiTdfsw33x7NQI9ZAoGAPaBzA6I+BtbRsdqXXtxIXvwLJrAPoerFMz3dESgeYDlKoBZZ2pOCFHpeSK0n5KGbU+c5sp0huS9jiTJ0+F+BWLPAKvSlnXwjtW2rUGTGA15JongAlCYNFoKwZE9H0WTWAOJbe0n83Z8Jm6J/EMA8BCloMjqTBI5+y9q9dvB28lE="
+}
