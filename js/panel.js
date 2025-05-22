@@ -650,6 +650,7 @@ function setStaticImports(commonScriptFileNames, isRootPathDefault) {
 }
 
 function setDefaultRootPathFiles() {
+    // Fetches config from packaged file
     const configFileUrl = chrome.runtime.getURL('UHChromeExtentionConfig.txt');
     fetch(configFileUrl)
         .then(response => {
@@ -658,19 +659,36 @@ function setDefaultRootPathFiles() {
         })
         .then(text => {
             const lines = text.split('\n');
-            let parsedFilePath = ""; let parsedConfigList = "";
+            // let parsedFilePath = ""; // No longer needed
+            let parsedConfigList = "";
             lines.forEach(line => {
-                if (line.startsWith("DEFAULT_GIT_PATH=")) parsedFilePath = line.substring("DEFAULT_GIT_PATH=".length).trim().replace(/,$/, "");
-                else if (line.startsWith("PYTHON_IMPORT_CONFIG=")) parsedConfigList = line.substring("PYTHON_IMPORT_CONFIG=".length).trim().replace(/,$/, "");
+                // Example line: DEFAULT_GIT_PATH=C:/Users/Public/Documents/UH_Screamingfrog_Output,
+                // if (line.startsWith("DEFAULT_GIT_PATH=")) parsedFilePath = line.substring("DEFAULT_GIT_PATH=".length).trim().replace(/,$/, ""); // Removed
+                if (line.startsWith("PYTHON_IMPORT_CONFIG=")) parsedConfigList = line.substring("PYTHON_IMPORT_CONFIG=".length).trim().replace(/,$/, "");
             });
 
-            localStorage["rootPathGitPath"] = parsedFilePath || ""; 
+            // localStorage["rootPathGitPath"] = parsedFilePath || ""; // Removed
             localStorage["pythonImport-config"] = parsedConfigList || "";
+            console.log("setDefaultRootPathFiles: PYTHON_IMPORT_CONFIG set from config file.");
+
+            // The following logic is obsolete as radio buttons and direct path logic were removed.
+            /*
+            if (sessionStorage["currentTab"] === "workspace") {
+                const selectedOption = localStorage["rootPathSelection"] || "radiodefaultrootpath";
+                const radioElement = document.getElementById(selectedOption);
+                if (radioElement && typeof radioElement.click === 'function') {
+                    // radioElement.click(); // Trigger refresh via radio button click - OBSOLETE
+                    console.log("setDefaultRootPathFiles: Obsolete radio button click trigger skipped.");
+                }
+            }
+            */
         })
         .catch(error => {
             console.error("Error fetching/processing UHChromeExtentionConfig.txt:", error);
-            alert("CRITICAL ERROR: Could not load UHChromeExtentionConfig.txt. Default paths not set.");
-            localStorage["rootPathGitPath"] = ""; localStorage["pythonImport-config"] = ""; 
+            // alert("CRITICAL ERROR: Could not load UHChromeExtentionConfig.txt. Default paths not set."); // User doesn't need alert for git path.
+            // localStorage["rootPathGitPath"] = ""; // Removed
+            localStorage["pythonImport-config"] = ""; // Set fallback for python config
+            console.warn("setDefaultRootPathFiles: pythonImport-config set to fallback due to error.");
         });
 }
 

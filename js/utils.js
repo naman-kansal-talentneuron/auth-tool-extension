@@ -103,14 +103,32 @@ export default class Utils {
             const filesInCategory = [];
             try {
                 for await (const entry of dirHandle.values()) {
-                    if (entry.kind === 'file') {
-                        if (extensions.length === 0 || extensions.some(ext => entry.name.endsWith(ext))) {
-                            filesInCategory.push(pathPrefix + entry.name);
+                    try { // New try-catch for individual entry processing
+                        if (entry.kind === 'file') {
+                            if (extensions.length === 0 || extensions.some(ext => entry.name.endsWith(ext))) {
+                                filesInCategory.push(pathPrefix + entry.name);
+                            }
+                        } else if (entry.kind === 'directory') {
+                            // Current design doesn't recurse into arbitrary subdirectories here,
+                            // but good to acknowledge them.
+                            // console.log(`listFiles: Found subdirectory '${entry.name}' in ${category}, not recursing further in this specific call.`);
                         }
+                    } catch (entryError) {
+                        console.error(`listFiles: Error processing entry '${entry.name}' in directory '${dirHandle.name}'. Skipping this entry. Error:`, entryError.name, entryError.message);
+                        // Optionally, could collect these errors and return them too.
                     }
                 }
             } catch (error) {
-                console.error(`Error reading directory ${dirHandle.name} for category ${category}:`, error);
+                // This outer catch handles errors like issues with calling dirHandle.values() itself
+                // or if the directory becomes unreadable during iteration.
+                console.error(`Error reading directory ${dirHandle.name} for category ${category}:`, error.name, error.message);
+                // Rethrow or handle as appropriate. If this is a DOMException, it might be the one user is seeing.
+                // For now, let the function continue and return any files processed so far for other categories.
+                // If this specific directory is critical, one might choose to throw error here.
+                 if (error instanceof DOMException) {
+                    // Log DOMExceptions specifically as they might be permission related or the issue user is facing
+                    console.error(`DOMException encountered while processing directory ${dirHandle.name}: ${error.message}`);
+                }
             }
             return filesInCategory;
         }
@@ -124,11 +142,13 @@ export default class Utils {
                 const subDirHandle = await directoryHandle.getDirectoryHandle(subDirName);
                 categorizedFiles[categoryName] = await processDirectory(subDirHandle, extensions, subDirName);
             } catch (error) {
-                // If subdirectory doesn't exist, just log it and continue
                 if (error.name === 'NotFoundError') {
                     console.log(`Subdirectory "${subDirName}" not found in "${directoryHandle.name}".`);
                 } else {
-                    console.error(`Error getting subdirectory "${subDirName}":`, error);
+                    console.error(`Error getting subdirectory handle for "${subDirName}":`, error.name, error.message);
+                     if (error instanceof DOMException) {
+                        console.error(`DOMException encountered while getting handle for subdirectory ${subDirName}: ${error.message}`);
+                    }
                 }
             }
         }
