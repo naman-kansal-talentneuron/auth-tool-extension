@@ -14,26 +14,10 @@
 
             <div class="row">
                 <div class="col-md-4">
-                    <form name="scriptform">
-                        <div>
-                            <input type="radio" name="ROOTPATH" id="radiodefaultrootpath" value="Default Git Path"
-                                checked>
-                            <label>Default Git script path</label>
-                        </div>
-                        <div>
-                            <input type="radio" name="ROOTPATH" id="radiocustomrootpath" value="Custom Path">
-                            <label>Custom script path</label>
-                        </div>
-                    </form>
+                    <button id="selectProjectDirBtn" class="button3">Select Project Directory</button>
+                    <p style="margin-top: 10px;">Selected Directory: <span id="selectedProjectDirDisplay">None</span></p>
                 </div>
                 <div class="col-md-8">
-                    <div id="scriptPathContainer" class="row">
-                        <label for="automplete-1">Script Path : </label>
-                        <input id="scriptrootPath" class="toolinput min-width-50percent"
-                            placeholder="Enter custom script path">
-                        <button id="applyScriptPathBtn" class="button3" style="margin-left: 20px;"
-                            disabled>Apply</button>
-                    </div>
                     <div class="row" style="padding-top: 5px;">
                         <label for="automplete-1">Search Project : </label>
                         <input id="automplete-1" class="toolinput" placeholder="Search Project to Load">
