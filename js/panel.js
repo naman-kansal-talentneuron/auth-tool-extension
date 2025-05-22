@@ -518,7 +518,8 @@ async function loadWorkspaceTab() { // Made async
 }
 
 function registerScriptPath() {
-    console.warn("registerScriptPath is now obsolete and its functionality has been replaced by the 'Select Project Directory' button.");
+    console.warn("registerScriptPath is obsolete and should no longer be called. Its functionality has been replaced by the 'Select Project Directory' button.");
+    // All previous content of this function should be removed.
 }
 
 function registerProjectAutoComplete(files) {
@@ -871,3 +872,5 @@ async function isValidJson(projectname) { // Made async
         return false;
     }
 }
+
+[end of js/panel.js]
