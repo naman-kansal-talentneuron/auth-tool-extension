@@ -8,6 +8,8 @@ import LoadProjectTab from "./project.js"; // Ensure this path is correct relati
 import loadEditorTab from "./python-ide.js"; // Ensure this path is correct
 import Utils from './utils.js'; // Ensure this path is correct
 
+let selectedDirectoryHandle = null; // Added global variable
+
 // --- START: Communication Helpers for Side Panel Migration ---
 
 // Establish connection with the background script
@@ -369,14 +371,43 @@ function setRestorePreviousSourceSession() {
     }
 }
 
-function loadWorkspaceTab() {
-    setDefaultRootPathFiles(); // This now uses fetch for config, but still calls problematic fetchProjectList indirectly
+async function loadWorkspaceTab() { // Made async
+    setDefaultRootPathFiles(); 
     sessionStorage["currentTab"] = "workspace";
     let authToolVersionEle = document.getElementById("versionNumber");
     try {
         if (authToolVersionEle) authToolVersionEle.innerText = chrome.runtime.getManifest().version;
     } catch(error) {
         console.error("Error fetching version: " + error);
+    }
+
+    let selectDirBtn = document.getElementById("selectProjectDirBtn");
+    let dirDisplay = document.getElementById("selectedProjectDirDisplay");
+
+    if (selectDirBtn && dirDisplay) {
+        selectDirBtn.addEventListener('click', async () => {
+            try {
+                const handle = await window.showDirectoryPicker();
+                selectedDirectoryHandle = handle; 
+                dirDisplay.textContent = handle.name; 
+                console.log("Selected directory:", handle.name);
+                
+                const files = await fetchProjectList(true); // isRootPathDefault relevance might change
+                registerProjectAutoComplete(files);
+                // alert("Directory selected: " + handle.name + ". Projects listed."); // Removed alert
+
+            } catch (err) {
+                console.error("Error selecting or listing directory:", err);
+                if (err.name !== 'AbortError') { 
+                    alert("Error selecting directory or listing projects: " + err.message);
+                }
+                dirDisplay.textContent = "None";
+                selectedDirectoryHandle = null;
+                registerProjectAutoComplete({ harvesterFileNames: [], extractorFileNames: [], customScriptFileNames: [] }); 
+            }
+        });
+    } else {
+        console.warn("Could not find 'selectProjectDirBtn' or 'selectedProjectDirDisplay' in workspace tab.");
     }
 
     let sourceNameElem = document.getElementById("sourceNameTxt");
@@ -389,7 +420,7 @@ function loadWorkspaceTab() {
 
     let createProjBtn = document.getElementById("createProjBtn");
     if (createProjBtn) {
-        createProjBtn.addEventListener("click", function () {
+        createProjBtn.addEventListener("click", async function () { // Made async
             inputCreateNewSource = handleCreateProjButton();
             let sourceNameVal = inputCreateNewSource.sourceNameVal;
             let startUrlVal = inputCreateNewSource.startUrlVal;
@@ -397,128 +428,106 @@ function loadWorkspaceTab() {
             if (!sourceNameVal || !startUrlVal) {
                 alert("Source Name and Start URL cannot be empty."); return;
             }
-
-            let pathValue = localStorage["rootPathGitPath"];
-            let files = {};
-            try {
-                files = fetchProjectList(pathValue, true); // CRITICAL WARNING: Problematic file access
-            } catch (e) {
-                console.error("Failed to fetch project list from default path:", e);
-                alert("Error: Could not load project files from default path. Check Workspace settings."); return;
+             if (!selectedDirectoryHandle) {
+                alert("Please select a project directory first using the 'Select Project Directory' button.");
+                return;
             }
 
-            let filesForTemplateCheck = {};
+            // 1. Check for existing project
             try {
-                filesForTemplateCheck = localStorage['rootPathSelection'] === 'radiodefaultrootpath' ? files : fetchProjectList(localStorage['rootPath']); // CRITICAL WARNING: Problematic file access
+                const existingFiles = await Utils.listFiles(selectedDirectoryHandle, { extractor: ['.extract'] });
+                if (existingFiles.extractorFiles && existingFiles.extractorFiles.includes(`extractor/${sourceNameVal}.extract`)) {
+                    alert("Project '" + sourceNameVal + "' already exists. Please choose a different name.");
+                    return;
+                }
             } catch (e) {
-                console.error("Failed to fetch project list for template check:", e);
-                alert("Error: Could not load project files from current path.");
+                console.error("Error checking for existing project:", e);
+                alert("Error checking for existing project: " + e.message);
+                return;
             }
-            localStorage["list_of_files"] = JSON.stringify(filesForTemplateCheck);
-            
-            if (files.extractorFileNames && files.extractorFileNames.includes(sourceNameVal)) {
-                console.log("Existing source found, loading:", sourceNameVal);
-                sessionStorage["selectedProject"] = sourceNameVal.trim();
-                sessionStorage.removeItem("newProject");
-                triggerClick(sourceNameVal);
-            } else {
-                console.log("Creating new project:", sourceNameVal);
+
+            // Show a simple loading indicator
+            const createBtnOriginalText = this.textContent;
+            this.textContent = 'Creating...';
+            this.disabled = true;
+
+            try {
+                // 2. Create Directories
+                const harvesterDirHandle = await selectedDirectoryHandle.getDirectoryHandle('harvester', { create: true });
+                const extractorDirHandle = await selectedDirectoryHandle.getDirectoryHandle('extractor', { create: true });
+                const scriptsDirHandle = await selectedDirectoryHandle.getDirectoryHandle('scripts', { create: true });
+
+                // 3 & 4. Prepare File Content
+                const defaultHarvest = {
+                    source: sourceNameVal,
+                    proxy: { ip: "default", port: "" },
+                    type: "html",
+                    startUrl: startUrlVal,
+                    payload: [], params: {}, options: {}, settings: {}, prepare: []
+                };
+                const defaultExtractor = { source: sourceNameVal };
+                const defaultPythonScript = "# New Python script for " + sourceNameVal + "\n\n";
+
+                // 5. Write Files
+                async function writeFileToDisk(dirHandle, fileName, content) {
+                    const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(content);
+                    await writable.close();
+                }
+
+                await writeFileToDisk(harvesterDirHandle, sourceNameVal + '.harvest', JSON.stringify(defaultHarvest, null, 2));
+                await writeFileToDisk(extractorDirHandle, sourceNameVal + '.extract', JSON.stringify(defaultExtractor, null, 2));
+                await writeFileToDisk(scriptsDirHandle, sourceNameVal + '.py', defaultPythonScript);
+                
+                alert("Project '" + sourceNameVal + "' created successfully!");
+
+                // 6. Update Session Storage and Trigger Load
                 sessionStorage["newProject"] = sourceNameVal.trim();
                 sessionStorage["newStartUrl"] = startUrlVal.trim();
-                localStorage["authScriptObject" + "-" + sourceNameVal.trim()] = "{}";
                 sessionStorage.removeItem("selectedProject");
-                sessionStorage["customScriptAvailable"] = "false";
-                triggerClick(sourceNameVal);
+                sessionStorage["customScriptAvailable"] = "true"; // Since we created an empty .py file
+                
+                // Refresh the project list in autocomplete
+                const files = await fetchProjectList(true); // isRootPathDefault is likely vestigial
+                registerProjectAutoComplete(files);
+                
+                triggerClick(sourceNameVal); // Open the new project
+
+            } catch (err) {
+                console.error("Error creating project files:", err);
+                alert("Error creating project files: " + err.message);
+            } finally {
+                this.textContent = createBtnOriginalText;
+                this.disabled = false;
             }
         });
     }
-    registerScriptPath();
     setRestorePreviousSourceSession();
-    handleCreateProjButton(); // Init button state
+    handleCreateProjButton(); 
+
+    if (selectedDirectoryHandle) {
+        try {
+            const initialFiles = await fetchProjectList(true); // isRootPathDefault relevance might change
+            registerProjectAutoComplete(initialFiles);
+        } catch (e) {
+            console.error("Error fetching initial project list:", e);
+            alert("Error fetching initial project list: " + e.message);
+        }
+    }
 }
 
 function registerScriptPath() {
-    var radscriptOptionsContainer = document.scriptform;
-    if (!radscriptOptionsContainer) return;
-    var radscriptOptions = radscriptOptionsContainer.ROOTPATH;
-    if (!radscriptOptions || typeof radscriptOptions.length === 'undefined') return;
-
-    for (var i = 0; i < radscriptOptions.length; i++) {
-        radscriptOptions[i].addEventListener('click', function () {
-            let isRootPathDefault = (this.value === "Default Git Path");
-            let pathValue = isRootPathDefault ? localStorage["rootPathGitPath"] : (localStorage["rootPathCustomPath"] || "");
-            let selectedOptionsKey = isRootPathDefault ? "radiodefaultrootpath" : "radiocustomrootpath";
-            
-            let scriptRootPathInput = document.getElementById("scriptrootPath");
-            let applyScriptPathBtn = document.getElementById("applyScriptPathBtn");
-            let autompleteInput = document.getElementById("automplete-1");
-
-            if (scriptRootPathInput) {
-                scriptRootPathInput.value = pathValue;
-                scriptRootPathInput.readOnly = isRootPathDefault;
-                scriptRootPathInput.classList.toggle('read-only', isRootPathDefault);
-            }
-            if (applyScriptPathBtn) applyScriptPathBtn.disabled = isRootPathDefault || (pathValue === localStorage["rootPathCustomPath"]);
-            if (autompleteInput) autompleteInput.disabled = !isRootPathDefault && (pathValue !== localStorage["rootPathCustomPath"]);
-
-            localStorage["rootPath"] = pathValue;
-            localStorage["rootPathSelection"] = selectedOptionsKey;
-
-            let files = {};
-            try {
-                files = fetchProjectList(pathValue, isRootPathDefault); // CRITICAL WARNING: Problematic file access
-            } catch (e) {
-                console.error("Failed to fetch project list on radio click:", e);
-                alert("Error: Could not load project files. Autocomplete may not work.");
-            }
-            registerProjectAutoComplete(files);
-        });
-    }
-
-    let selectedRootPathId = localStorage["rootPathSelection"] || "radiodefaultrootpath";
-    let selectedRadio = document.getElementById(selectedRootPathId);
-    if (selectedRadio && typeof selectedRadio.click === 'function') {
-        selectedRadio.click();
-    } else if(radscriptOptions.length > 0 && typeof radscriptOptions[0].click === 'function') {
-        radscriptOptions[0].click(); // Default to first if stored selection invalid
-    }
-
-    let scriptRootPathInput = document.getElementById("scriptrootPath");
-    if (scriptRootPathInput) {
-        scriptRootPathInput.addEventListener('keyup', function (event) {
-            let applyScriptPathBtn = document.getElementById("applyScriptPathBtn");
-            let autompleteInput = document.getElementById("automplete-1");
-            if (localStorage["rootPathSelection"] === "radiocustomrootpath") {
-                const changed = (event.target.value !== localStorage["rootPathCustomPath"]);
-                if (applyScriptPathBtn) applyScriptPathBtn.disabled = !changed;
-                if (autompleteInput) autompleteInput.disabled = changed;
-            }
-        });
-    }
-    
-    let applyScriptPathBtn = document.getElementById("applyScriptPathBtn");
-    if (applyScriptPathBtn) {
-        applyScriptPathBtn.addEventListener("click", function () {
-            let scriptPath = scriptRootPathInput ? scriptRootPathInput.value : "";
-            localStorage["rootPathCustomPath"] = scriptPath;
-            this.disabled = true;
-            let autompleteInput = document.getElementById("automplete-1");
-            if (autompleteInput) autompleteInput.disabled = false;
-            let customRadio = document.getElementById('radiocustomrootpath');
-            if (customRadio && typeof customRadio.click === 'function') customRadio.click();
-        });
-    }
+    console.warn("registerScriptPath is now obsolete and its functionality has been replaced by the 'Select Project Directory' button.");
 }
 
 function registerProjectAutoComplete(files) {
-    // ... (Function content remains largely the same as previous version, relies on 'files' object)
-    // Ensure jQuery UI autocomplete is loaded correctly.
     const $autocompleteInput = $("#automplete-1");
 
-    if ($autocompleteInput.data('ui-autocomplete')) { // Check specific jQuery UI data key
+    if ($autocompleteInput.data('ui-autocomplete')) { 
         try { $autocompleteInput.autocomplete("destroy"); } catch (e) { /* ignore */ }
     }
-    $autocompleteInput.removeData('ui-autocomplete'); // Clean up data
+    $autocompleteInput.removeData('ui-autocomplete'); 
 
     const sourceFiles = (files && Array.isArray(files.extractorFileNames)) ? files.extractorFileNames : [];
     if (sourceFiles.length === 0) {
@@ -528,23 +537,27 @@ function registerProjectAutoComplete(files) {
     $autocompleteInput.autocomplete({
         source: sourceFiles,
         minLength: 0, 
-        select: function (event, ui) {
+        select: async function (event, ui) { // Made async
             let selectedProjectName = ui.item.label;
             sessionStorage.removeItem("newProject");
             sessionStorage["selectedProject"] = selectedProjectName;
-            sessionStorage["customScriptAvailable"] = (files.customScriptFileNames && files.customScriptFileNames.includes(ui.item.label)) ? "true" : "false";
+            
+            const customScriptExists = (files.customScriptFileNames && files.customScriptFileNames.includes(ui.item.label));
+            sessionStorage["customScriptAvailable"] = customScriptExists ? "true" : "false";
 
             let errorMsgWsInvalidFileLbl = document.getElementById('errorMsgWsInvalidFileLbl');
             let errorMsgWsFileLbl = document.getElementById('errorMsgWsFileLbl');
             if (errorMsgWsInvalidFileLbl) errorMsgWsInvalidFileLbl.style.display = 'none';
             if (errorMsgWsFileLbl) errorMsgWsFileLbl.style.display = 'none';
 
-            if (files.harvesterFileNames && files.harvesterFileNames.includes(ui.item.label)) {
-                if (isValidJson(ui.item.label)) { // CRITICAL WARNING: Problematic file access
+            const harvesterExists = files.harvesterFileNames && files.harvesterFileNames.includes(ui.item.label);
+
+            if (harvesterExists) { 
+                if (await isValidJson(ui.item.label)) { 
                     triggerClick(ui.item.label); 
                 } else {
                     if (errorMsgWsInvalidFileLbl) {
-                         errorMsgWsInvalidFileLbl.innerHTML = `Error: ${ui.item.label}.harvest or .extract is not valid JSON.`;
+                         errorMsgWsInvalidFileLbl.innerHTML = `Error: ${ui.item.label}.harvest or .extract is not valid JSON or not found.`;
                          errorMsgWsInvalidFileLbl.style.cssText = 'display:block; color: red; width: 100%;';
                     }
                 }
@@ -558,7 +571,7 @@ function registerProjectAutoComplete(files) {
             $autocompleteInput.blur(); 
         }
     }).focus(function(){
-        if (sourceFiles.length > 0) {
+        if (sourceFiles.length > 0) { 
             $(this).autocomplete("search", $(this).val()); 
         }
     });
@@ -575,69 +588,68 @@ function triggerClick(itemName) {
     }
 }
 
+async function fetchProjectList(isRootPathDefault) { // filePath parameter is removed, made async
+    console.log("Refactored fetchProjectList called.");
+    if (!selectedDirectoryHandle) {
+        console.warn("fetchProjectList: No directory selected.");
+        return { harvesterFileNames: [], extractorFileNames: [], customScriptFileNames: [], commonScriptFileNames: [] };
+    }
 
-function fetchProjectList(filePath, isRootPathDefault) {
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // CRITICAL WARNING: This function uses `extractFileNames`, which attempts
-    // unreliable and insecure local file system access. Redesign is required.
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    console.error(`[FATAL DESIGN FLAW] fetchProjectList called for path: "${filePath}". Relies on insecure/unreliable local file access.`);
-    // alert(`Developer Note: Project file listing from "${filePath}" uses an unreliable method and needs redesign.`);
+    // Define the structure to scan
+    const subdirectoriesToScan = {
+        extractor: ['.extract'],
+        harvester: ['.harvest'],
+        scripts: ['.py'] 
+    };
 
-    let extractorFileNames = [];
-    let harvesterFileNames = [];
-    let customScriptFileNames = [];
+    const categorizedFiles = await Utils.listFiles(selectedDirectoryHandle, subdirectoriesToScan);
+
+    // Extract base names for extractor files, as this seems to be used as "project names"
+    const extractorBaseNames = (categorizedFiles.extractorFiles || []).map(fname => fname.substring(fname.lastIndexOf('/') + 1).replace('.extract', ''));
+    
+    const harvesterBaseNames = (categorizedFiles.harvesterFiles || []).map(fname => fname.substring(fname.lastIndexOf('/') + 1).replace('.harvest', ''));
+    const customScriptBaseNames = (categorizedFiles.scriptsFiles || []).map(fname => fname.substring(fname.lastIndexOf('/') + 1).replace('.py', ''));
+
     let commonScriptFileNames = [];
-
-    if (!filePath) {
-        console.error("fetchProjectList called with empty filePath.");
-        return { harvesterFileNames, extractorFileNames, customScriptFileNames }; // Return empty
-    }
-
     try {
-        const basePath = filePath.replace(/\\/g, '/');
-        const extractorFilePath = basePath + (isRootPathDefault ? '/extractor' : "");
-        extractorFileNames = extractFileNames(extractorFilePath, ".extract"); // Problematic
-
-        const harvesterFilePath = basePath + (isRootPathDefault ? '/harvester' : "");
-        harvesterFileNames = extractFileNames(harvesterFilePath, ".harvest"); // Problematic
-    } catch(err) {
-        console.error(`Failed to load .extract or .harvest files from path: "${filePath}"`, err);
-        // Do not alert here, let caller handle UI feedback if needed.
-        throw err; // Re-throw so caller knows it failed
-    }
-
-    try {
-        const basePath = filePath.replace(/\\/g, '/');
-        const scriptFilePath = basePath + (isRootPathDefault ? '/scripts' : "");
-        const commonScriptFilePath = scriptFilePath + (isRootPathDefault ? '/commonutils' : "");
-        customScriptFileNames = extractFileNames(scriptFilePath, ".py"); // Problematic
-        commonScriptFileNames = extractFileNames(commonScriptFilePath, ".py"); // Problematic
-    } catch(err) {
-        console.warn(`Failed to load .py files from script path derived from: "${filePath}"`, err);
+        const scriptsDirHandle = await selectedDirectoryHandle.getDirectoryHandle('scripts');
+        const commonUtilsDirHandle = await scriptsDirHandle.getDirectoryHandle('commonutils');
+        const commonUtilsResult = await Utils.listFiles(commonUtilsDirHandle, {}, ['.py']); 
+        commonScriptFileNames = (commonUtilsResult.rootFiles || []).map(fname => fname.replace('.py', ''));
+    } catch (e) {
+        if (e.name === 'NotFoundError') {
+             console.log("Could not find 'scripts/commonutils' directory. Common scripts may be missing.");
+        } else {
+            console.log("Error accessing 'scripts/commonutils':", e.name, e.message);
+        }
     }
 
     const filenames = {
-        harvesterFileNames: harvesterFileNames || [],
-        extractorFileNames: extractorFileNames || [],
-        customScriptFileNames: customScriptFileNames || []
+        harvesterFileNames: harvesterBaseNames, 
+        extractorFileNames: extractorBaseNames, 
+        customScriptFileNames: customScriptBaseNames, 
+        fullPathExtractorFiles: categorizedFiles.extractorFiles || [],
+        fullPathHarvesterFiles: categorizedFiles.harvesterFiles || [],
+        commonScriptFileNames: commonScriptFileNames 
     };
-    setStaticImports(commonScriptFileNames || [], isRootPathDefault);
+    
+    setStaticImports(commonScriptFileNames || [], isRootPathDefault); // isRootPathDefault might be less relevant now
+    console.log("fetchProjectList results:", filenames);
     return filenames;
 }
 
+
 function setStaticImports(commonScriptFileNames, isRootPathDefault) {
     let staticImportList = "";
-    if (isRootPathDefault && Array.isArray(commonScriptFileNames)) {
+    if (isRootPathDefault && Array.isArray(commonScriptFileNames)) { // isRootPathDefault might need re-evaluation
         commonScriptFileNames.forEach((file) => {
-            staticImportList += `import ${file}\n`; // Assuming 'file' is the module name without .py
+            staticImportList += `import ${file}\n`; 
         });
     }
     localStorage["pythonImport-git"] = staticImportList;
 }
 
 function setDefaultRootPathFiles() {
-    // Fetches config from packaged file - this part is OK.
     const configFileUrl = chrome.runtime.getURL('UHChromeExtentionConfig.txt');
     fetch(configFileUrl)
         .then(response => {
@@ -652,35 +664,14 @@ function setDefaultRootPathFiles() {
                 else if (line.startsWith("PYTHON_IMPORT_CONFIG=")) parsedConfigList = line.substring("PYTHON_IMPORT_CONFIG=".length).trim().replace(/,$/, "");
             });
 
-            localStorage["rootPathGitPath"] = parsedFilePath || ""; // Use empty string if not found
+            localStorage["rootPathGitPath"] = parsedFilePath || ""; 
             localStorage["pythonImport-config"] = parsedConfigList || "";
-
-            if (sessionStorage["currentTab"] === "workspace") {
-                const selectedOption = localStorage["rootPathSelection"] || "radiodefaultrootpath";
-                const radioElement = document.getElementById(selectedOption);
-                if (radioElement && typeof radioElement.click === 'function') {
-                    radioElement.click(); // Trigger refresh via radio button click
-                }
-            }
         })
         .catch(error => {
             console.error("Error fetching/processing UHChromeExtentionConfig.txt:", error);
             alert("CRITICAL ERROR: Could not load UHChromeExtentionConfig.txt. Default paths not set.");
-            localStorage["rootPathGitPath"] = ""; localStorage["pythonImport-config"] = ""; // Set fallbacks
+            localStorage["rootPathGitPath"] = ""; localStorage["pythonImport-config"] = ""; 
         });
-}
-
-
-function extractFileNames(url, extension) {
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // CRITICAL WARNING: THIS FUNCTION IS FUNDAMENTALLY FLAWED for accessing
-    // local file systems securely and reliably from a Chrome Extension.
-    // It needs complete replacement (e.g., File System Access API).
-    // Returning empty array to prevent errors, but functionality is broken.
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    console.error(`[FATAL DESIGN FLAW] extractFileNames called for URL: "${url}". Local file access method needs redesign.`);
-    // alert(`Developer Note: File listing from "${url}" is disabled due to security/reliability issues.`);
-    return []; // Return empty array - the original logic is not viable.
 }
 
 
@@ -690,7 +681,6 @@ function enableKeyboardShortcut() {
 }
 
 function keyeventtarget(eventFunction) {
-    // ... (Function content remains largely the same as previous version)
     let eventFunctionKeyName = getEventFunctionKeyName(eventFunction);
     let keyName = eventFunction.key;
     if (keyName === 'Alt' && !eventFunction.ctrlKey && !eventFunction.shiftKey && !eventFunction.metaKey) return;
@@ -710,7 +700,6 @@ function keyeventtarget(eventFunction) {
 }
 
 function handleKeyboardShortcut(configData, eventFunctionKeyName, keyName) {
-    // ... (Function content remains largely the same as previous version, includes element checks)
     let userAction = getKeyPressedName(configData, eventFunctionKeyName, keyName);
     if (!userAction) return;
 
@@ -781,14 +770,12 @@ function handleKeyboardShortcut(configData, eventFunctionKeyName, keyName) {
 
 
 function getKeyPressedName(configData, commandKey, keyName) {
-    // ... (Function content remains largely the same as previous version)
     if (!configData) return null;
     const keyToLookup = (commandKey ? commandKey + "_" : "") + keyName.toLowerCase();
     return configData[keyToLookup];
 }
 
 function getEventFunctionKeyName(eventFunction) {
-    // ... (Function content remains largely the same as previous version)
     if (eventFunction.altKey) return "alt";
     if (eventFunction.ctrlKey) return "ctrl";
     if (eventFunction.shiftKey) return "shift";
@@ -797,7 +784,6 @@ function getEventFunctionKeyName(eventFunction) {
 }
 
 function handleCreateProjButton() {
-    // ... (Function content remains largely the same as previous version)
     let sourceNameElem = document.getElementById("sourceNameTxt");
     let startUrlElem = document.getElementById("startUrlTxt");
     let createProjBtnElem = document.getElementById("createProjBtn");
@@ -809,7 +795,6 @@ function handleCreateProjButton() {
 
 
 function isAnyCtxMenuOpened() {
-    // ... (Function content remains largely the same as previous version)
     const menuElements = document.getElementsByClassName("menu");
     if (menuElements) {
         for (let i = 0; i < menuElements.length; i++) {
@@ -821,7 +806,6 @@ function isAnyCtxMenuOpened() {
 
 
 function getElementOfCtxMenuItem(index) {
-    // ... (Function content remains largely the same as previous version)
     if (index < 1) return null;
     const menuElements = document.getElementsByClassName("menu");
     if (menuElements) {
@@ -835,35 +819,37 @@ function getElementOfCtxMenuItem(index) {
     return null;
 }
 
+async function isValidJson(projectname) { // Made async
+    if (!selectedDirectoryHandle) {
+        console.error("isValidJson: No directory selected.");
+        return false;
+    }
+    if (!projectname) {
+        console.error("isValidJson: No project name provided.");
+        return false;
+    }
 
-function isValidJson(projectname) {
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // CRITICAL WARNING: This function uses Utils.fetchFileFromPath, which is
-    // unreliable/insecure for local file access. Needs redesign.
-    // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    console.error(`[FATAL DESIGN FLAW] isValidJson called for project "${projectname}". Relies on insecure/unreliable local file access via Utils.fetchFileFromPath.`);
-    // alert(`Developer Note: JSON validation for "${projectname}" uses an unreliable file access method and needs redesign.`);
-    // Returning false as the underlying fetch is not viable.
-    return false; 
-    /* // Original logic (commented out due to fetchFileFromPath issues)
-    if (!Utils || typeof Utils.fetchFileFromPath !== 'function') {
-        console.error("Utils.fetchFileFromPath is not available. Cannot validate JSON.");
-        return false;
-    }
-    let rootPath = localStorage["rootPath"];
-    let isDefaultRootPath = localStorage["rootPathSelection"] == "radiodefaultrootpath";
+    const extractorPath = `extractor/${projectname}.extract`;
+    const harvesterPath = `harvester/${projectname}.harvest`;
+
     try {
-        const basePath = rootPath.replace(/\\/g, '/');
-        const harvesterSuffix = (isDefaultRootPath ? '/harvester/' : "/") + projectname + '.harvest';
-        const extractorSuffix = (isDefaultRootPath ? '/extractor/' : "/") + projectname + '.extract';
-        let harvesterPath = basePath + harvesterSuffix;
-        let extractorPath = basePath + extractorSuffix;
-        JSON.parse(Utils.fetchFileFromPath(harvesterPath)); // Problematic
-        JSON.parse(Utils.fetchFileFromPath(extractorPath)); // Problematic
+        const extractorContent = await Utils.readFileContent(selectedDirectoryHandle, extractorPath);
+        if (extractorContent === null) {
+            console.warn(`isValidJson: Could not read ${extractorPath}`);
+            return false;
+        }
+        JSON.parse(extractorContent);
+
+        const harvesterContent = await Utils.readFileContent(selectedDirectoryHandle, harvesterPath);
+        if (harvesterContent === null) {
+            console.warn(`isValidJson: Could not read ${harvesterPath}`);
+            return false;
+        }
+        JSON.parse(harvesterContent);
+        
+        return true;
     } catch (e) {
-        console.error(`Error validating JSON for project '${projectname}':`, e);
+        console.error(`isValidJson: Error parsing JSON for project '${projectname}':`, e);
         return false;
     }
-    return true;
-    */
 }

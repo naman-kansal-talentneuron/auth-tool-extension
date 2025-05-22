@@ -18,28 +18,6 @@ export default class Utils {
      * It is restored temporarily ONLY for testing other parts of the Side Panel migration.
      * It MUST be replaced with a proper API (e.g., File System Access API) later.
      */
-    static fetchFileFromPath(path) {
-        console.warn(`[TEMPORARY CODE] Utils.fetchFileFromPath is using the original synchronous XHR method for path: "${path}". This is unreliable and MUST be replaced.`);
-        
-        var request = new XMLHttpRequest();
-        // Use 'false' for synchronous request - BLOCKS THE UI!
-        request.open('GET', path, false); 
-        request.send(null);
-
-        // Check status - For file://, status 0 or 200 might indicate success depending on browser.
-        // For http/https, status 200 is success.
-        if (request.status === 200 || (request.responseURL && request.responseURL.startsWith("file:") && request.status === 0)) {
-            return request.responseText;
-        } else {
-            // Log the error but allow execution to continue (original behavior might have implicitly done this)
-            // Throwing an error might be better for debugging, but could break original workflows if they expected null/undefined on failure.
-            console.error(`Utils.fetchFileFromPath: Failed to fetch "${path}". Status: ${request.status}`);
-            // Decide what to return on failure based on how calling code handles it.
-            // Returning null might be safer than throwing if original code didn't handle throws.
-            // throw new Error(`Failed to fetch file: ${path}. Status: ${request.status}`); 
-            return null; // Or potentially "" depending on expected behavior
-        }
-    }
 
     /**
      * @description Sets default element options if specific ones are not provided.
@@ -101,5 +79,103 @@ export default class Utils {
      }
 
     // Add any other general utility functions needed by the extension here...
+
+    /**
+     * Lists files in a given directory, optionally filtering by extensions.
+     * Can look into predefined subdirectories like 'extractor', 'harvester', 'scripts'.
+     * @param {FileSystemDirectoryHandle} directoryHandle The handle to the directory.
+     * @param {object} subdirectories Optional object specifying subdirectories to scan for specific extensions. 
+     *                                  Example: { extractor: ['.extract'], harvester: ['.harvest'], scripts: ['.py'] }
+     * @param {string[]} rootExtensions Optional array of extensions to look for in the root directory.
+     * @returns {Promise<object>} A promise that resolves to an object containing arrays of file names, 
+     *                            categorized by their type (e.g., extractorFiles, harvesterFiles, scriptFiles, rootFiles).
+     *                            Example: { extractorFiles: ['a.extract'], harvesterFiles: ['b.harvest'], scriptFiles: ['c.py'], rootFiles: ['d.txt'] }
+     */
+    static async listFiles(directoryHandle, subdirectories = {}, rootExtensions = []) {
+        const categorizedFiles = {};
+        if (!directoryHandle) {
+            console.warn("listFiles: directoryHandle is null.");
+            return categorizedFiles;
+        }
+
+        // Helper function to process a directory
+        async function processDirectory(dirHandle, extensions, category, pathPrefix = "") {
+            const filesInCategory = [];
+            try {
+                for await (const entry of dirHandle.values()) {
+                    if (entry.kind === 'file') {
+                        if (extensions.length === 0 || extensions.some(ext => entry.name.endsWith(ext))) {
+                            filesInCategory.push(pathPrefix + entry.name);
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error(`Error reading directory ${dirHandle.name} for category ${category}:`, error);
+            }
+            return filesInCategory;
+        }
+
+        // Process predefined subdirectories
+        for (const subDirName in subdirectories) {
+            const extensions = subdirectories[subDirName];
+            const categoryName = `${subDirName}Files`; // e.g., extractorFiles
+            categorizedFiles[categoryName] = [];
+            try {
+                const subDirHandle = await directoryHandle.getDirectoryHandle(subDirName);
+                categorizedFiles[categoryName] = await processDirectory(subDirHandle, extensions, subDirName);
+            } catch (error) {
+                // If subdirectory doesn't exist, just log it and continue
+                if (error.name === 'NotFoundError') {
+                    console.log(`Subdirectory "${subDirName}" not found in "${directoryHandle.name}".`);
+                } else {
+                    console.error(`Error getting subdirectory "${subDirName}":`, error);
+                }
+            }
+        }
+        
+        // Process root directory files
+        categorizedFiles.rootFiles = await processDirectory(directoryHandle, rootExtensions, "root");
+
+        return categorizedFiles;
+    }
+
+    /**
+     * Reads the content of a specific file within a given directory or subdirectory.
+     * @param {FileSystemDirectoryHandle} directoryHandle The handle to the main directory.
+     * @param {string} filePath The name of the file, potentially including a relative path from the directoryHandle.
+     *                          Example: "myFile.txt" or "subdir/myFile.txt".
+     * @returns {Promise<string|null>} A promise that resolves to the file content as a string, or null if an error occurs.
+     */
+    static async readFileContent(directoryHandle, filePath) {
+        if (!directoryHandle) {
+            console.warn("readFileContent: directoryHandle is null.");
+            return null;
+        }
+        if (!filePath) {
+            console.warn("readFileContent: filePath is null or empty.");
+            return null;
+        }
+
+        try {
+            let fileHandle;
+            const pathParts = filePath.split('/').filter(part => part.length > 0);
+            let currentDirHandle = directoryHandle;
+
+            if (pathParts.length > 1) {
+                // Navigate to subdirectory
+                for (let i = 0; i < pathParts.length - 1; i++) {
+                    currentDirHandle = await currentDirHandle.getDirectoryHandle(pathParts[i]);
+                }
+            }
+            fileHandle = await currentDirHandle.getFileHandle(pathParts[pathParts.length - 1]);
+            
+            const file = await fileHandle.getFile();
+            const content = await file.text();
+            return content;
+        } catch (error) {
+            console.error(`Error reading file "${filePath}" from directory "${directoryHandle.name}":`, error);
+            return null; // Return null or throw error as per desired error handling strategy
+        }
+    }
 
 } // End of Utils class

@@ -1,15 +1,13 @@
 // File: extension/js/auth-script-obj-manager.js
 // This is the ES6 class version provided by the user.
-// No changes were needed in THIS specific file for DevTools API migration,
-// as it does not directly use chrome.devtools.* APIs.
-// The primary concern for this file remains its local file access methods.
+// Refactored to use File System Access API via selectedDirectoryHandle and Utils.
 
 import Harvestor from "./harvest/Harvestor.js";
 import Proxy from "./proxy/Proxy.js";
 import Payload from "./payload/Payload.js";
 import Prepare from "./prepare/prepare.js";
 import ElementFactory from "./element/ElementFactory.js";
-import Utils from './utils.js'; // This utility is used for file fetching
+import Utils from './utils.js'; 
 import HarvesterConfigPayload from "./harvest/harvester-config-payload.js";
 import ExtractorConfigPayload from "./extract/extractor-config-payload.js";
 import MetaData from "./config/meta-data.js";
@@ -19,89 +17,76 @@ export default class AuthScriptObjManager {
 
     AUTH_SESSION_OBJECT_NAME = "authScriptObject";
 
-    constructor(rootPath, projectname) {
-        this.path = rootPath;
+    constructor(directoryHandle, projectname) {
+        this.directoryHandle = directoryHandle; 
         this.projectname = projectname;
-        let obj = this.getUHAuthObjectFromStorage();
-        this.authScriptObject = obj != undefined && obj != null ? obj : null;
-        this.harvestingObject; // Will be populated by splitUnifiedObject
-        this.extractorObject;  // Will be populated by splitUnifiedObject
-        this.getUHAuthScriptObject();
+        this.authScriptObject = null; 
+        this.harvestingObject = null;
+        this.extractorObject = null;
+        // Do NOT call getUHAuthScriptObject() or init() here.
     }
 
-    getUHAuthScriptObject() {
-        let localObject = this.getUHAuthObjectFromStorage();
+    async init() {
+        let localObject = this.getUHAuthObjectFromStorage(); 
         const isNewProject = sessionStorage["newProject"] != 'undefined' 
                                 && sessionStorage["newProject"] != null 
                                 && sessionStorage["newProject"] != "null";
 
         if (localObject != undefined && localObject != null) {
-            // Loading the object from localStorage
             this.authScriptObject = localObject;
-        } else if (isNewProject && !this.checkIfHarvesterAndExtractorTemplateFilesExist()) {
-            // if template doesn't exist, we use default harvest and extract Objects.
-            this.getDefaultUHAuthScriptObject();
+            if (this.authScriptObject.customScript && this.authScriptObject.customScript.length > 0 && this.directoryHandle) {
+                const scriptFileName = `${this.projectname}.py`; 
+                const scriptExists = await Utils.readFileContent(this.directoryHandle, `scripts/${scriptFileName}`);
+                if (scriptExists === null) {
+                     console.warn(`Custom script for ${this.projectname} was in localStorage but not found in selected directory. Clearing script content.`);
+                     this.authScriptObject.customScript = "";
+                     this.setUHAuthObjectToStorage(); 
+                }
+            }
+        } else if (isNewProject && !(await this.checkIfHarvesterAndExtractorTemplateFilesExist())) { 
+            this.getDefaultUHAuthScriptObject(); 
         } else {
-            const isDefaultRootPath = localStorage["rootPathSelection"] == "radiodefaultrootpath";
-            const projectName = isNewProject ? 'template' : this.projectname;
-            
-            // CRITICAL: Utils.fetchFileFromPath is used here and is problematic for local files
+            const projectNameToLoad = isNewProject ? 'template' : this.projectname;
             try {
-                let { harvestObj, extractObj } = this.getHarvestAndExtractObjects(projectName, isDefaultRootPath);
-                // setting source name and start url and flag to load custom script if it is a new project with default template
+                let { harvestObj, extractObj } = await this.getHarvestAndExtractObjects(projectNameToLoad); 
+                
                 if(isNewProject) {
                     this.setSourceNameAndStartURL(harvestObj, extractObj);
-                    if(this.checkIfCustomScriptTemplateFileExists()) {
-                        sessionStorage["customScriptAvailable"] = "true"; // Ensure consistent string "true"
+                    if(await this.checkIfCustomScriptTemplateFileExists()) { 
+                        sessionStorage["customScriptAvailable"] = "true";
                     } else {
                         sessionStorage["customScriptAvailable"] = "false";
                     }
                 }
 
-                this.translateJsonToElement(harvestObj, extractObj);
-                let scriptPath = this.path + ( isDefaultRootPath ? '/scripts/' : "/") + projectName + '.py';
-                this.setCustomScriptObj(scriptPath); // This also uses Utils.fetchFileFromPath
+                this.translateJsonToElement(harvestObj, extractObj); 
+                await this.setCustomScriptObj(projectNameToLoad); 
             } catch (error) {
-                console.error(`Error initializing AuthScript object for project "${projectName}":`, error);
-                // Fallback to default if file loading fails
-                alert(`Error loading project files for "${projectName}". Falling back to default empty project. Please check file paths and permissions. Error: ${error.message}`);
-                this.getDefaultUHAuthScriptObject();
+                console.error(`Error initializing AuthScript object for project "${projectNameToLoad}" from directory:`, error);
+                alert(`Error loading project files for "${projectNameToLoad}". Falling back to default empty project. Error: ${error.message}`);
+                this.getDefaultUHAuthScriptObject(); 
             }
         }
+       
+        if (!this.authScriptObject) {
+            console.warn("AuthScriptObject is still null after init attempts, setting default.");
+            this.getDefaultUHAuthScriptObject();
+        }
+        // Final save after all initialization attempts
+        this.setUHAuthObjectToStorage();
     }
 
-    checkIfHarvesterAndExtractorTemplateFilesExist() {
-        try {
-            const filesData = JSON.parse(localStorage['list_of_files']);
-            const { 
-                harvesterFileNames, 
-                extractorFileNames 
-            } = filesData || {}; // Default to empty object if filesData is null/undefined
-            
-            if (!Array.isArray(harvesterFileNames) || !Array.isArray(extractorFileNames)) return false;
-
-            return harvesterFileNames.map(name => String(name).toLowerCase()).includes('template') 
-                    && extractorFileNames.map(name => String(name).toLowerCase()).includes('template');
-        } catch (e) {
-            console.error("Error parsing list_of_files from localStorage:", e);
-            return false;
-        }
+    async checkIfHarvesterAndExtractorTemplateFilesExist() {
+        if (!this.directoryHandle) return false;
+        const harvesterContent = await Utils.readFileContent(this.directoryHandle, "harvester/template.harvest");
+        const extractorContent = await Utils.readFileContent(this.directoryHandle, "extractor/template.extract");
+        return harvesterContent !== null && extractorContent !== null;
     }
 
-    checkIfCustomScriptTemplateFileExists() {
-        try {
-            const filesData = JSON.parse(localStorage['list_of_files']);
-            const { 
-                customScriptFileNames 
-            } = filesData || {}; // Default to empty object
-
-            if (!Array.isArray(customScriptFileNames)) return false;
-            
-            return customScriptFileNames.map(name => String(name).toLowerCase()).includes('template');
-        } catch (e) {
-            console.error("Error parsing list_of_files for custom scripts:", e);
-            return false;
-        }
+    async checkIfCustomScriptTemplateFileExists() {
+        if (!this.directoryHandle) return false;
+        const scriptContent = await Utils.readFileContent(this.directoryHandle, "scripts/template.py");
+        return scriptContent !== null;
     }
 
     setSourceNameAndStartURL(harvestObj, extractObj) {
@@ -115,47 +100,62 @@ export default class AuthScriptObjManager {
     }
 
     getDefaultUHAuthScriptObject() {
-        let harvestObj = this.createDefaultHarvestObj(sessionStorage["newProject"], sessionStorage["newStartUrl"], "html", "default", "", [], []);
+        let harvestObj = this.createDefaultHarvestObj(sessionStorage["newProject"] || this.projectname, sessionStorage["newStartUrl"], "html", "default", "", [], []);
         let extractObj = this.createDefaultExtractorObj();
-        this.translateJsonToElement(harvestObj, extractObj);
-        this.setCustomScriptObj(); // Sets empty custom script if template/file not found
+        this.translateJsonToElement(harvestObj, extractObj); 
+        if (this.authScriptObject) { 
+            this.authScriptObject.customScript = ""; 
+        }
+        // Removed setUHAuthObjectToStorage() as init() will handle it.
     }
 
-    getHarvestAndExtractObjects(projectName, isDefaultRootPath) {
-        // CRITICAL: Utils.fetchFileFromPath is used here. This is problematic for local files.
-        // This function will throw an error if files are not accessible, which should be handled by the caller.
-        let harvesterPath = this.path + ( isDefaultRootPath ? '/harvester/' : "/") + projectName + '.harvest';
-        let harvestObj = JSON.parse(Utils.fetchFileFromPath(harvesterPath)); // Problematic line
+    async getHarvestAndExtractObjects(projectName) {
+        if (!this.directoryHandle) {
+            console.error("getHarvestAndExtractObjects: directoryHandle is not set.");
+            throw new Error("Project directory not selected.");
+        }
+        const harvesterPath = `harvester/${projectName}.harvest`;
+        const extractorPath = `extractor/${projectName}.extract`;
+
+        const harvestContent = await Utils.readFileContent(this.directoryHandle, harvesterPath);
+        if (harvestContent === null) throw new Error(`Failed to read ${harvesterPath}`);
+        const harvestObj = JSON.parse(harvestContent);
         
-        let extractorPath = this.path + ( isDefaultRootPath ? "/extractor/" : "/")+ projectName + ".extract";
-        let extractObj = JSON.parse(Utils.fetchFileFromPath(extractorPath)); // Problematic line
+        const extractContent = await Utils.readFileContent(this.directoryHandle, extractorPath);
+        if (extractContent === null) throw new Error(`Failed to read ${extractorPath}`);
+        const extractObj = JSON.parse(extractContent);
 
         return { harvestObj, extractObj };
     }
 
-    /**
-     * Sets custom python script data to the auth object if present.
-     */
-    setCustomScriptObj(scriptPath){
+    async setCustomScriptObj(projectName){
         let customScript = "";
-        if (sessionStorage["customScriptAvailable"] === "true" && scriptPath) {
-            try {
-                // CRITICAL: Utils.fetchFileFromPath is used here. Problematic for local files.
-                customScript = Utils.fetchFileFromPath(scriptPath); // Problematic line
-            } catch (error) {
-                console.warn(`Could not fetch custom script from "${scriptPath}":`, error);
-                // customScript remains ""
-            }
+        const scriptFileName = `${projectName}.py`;
+        const scriptPath = `scripts/${scriptFileName}`;
+       
+        if (!this.directoryHandle) {
+             console.warn("setCustomScriptObj: directoryHandle is not set. Cannot load custom script.");
+        } else {
+             try {
+                 const scriptContent = await Utils.readFileContent(this.directoryHandle, scriptPath);
+                 if (scriptContent !== null) {
+                     customScript = scriptContent;
+                     sessionStorage["customScriptAvailable"] = "true"; 
+                 } else {
+                     sessionStorage["customScriptAvailable"] = "false";
+                 }
+             } catch (error) {
+                 console.warn(`Could not fetch custom script from "${scriptPath}":`, error);
+                 sessionStorage["customScriptAvailable"] = "false";
+             }
         }
-        // Ensure authScriptObject exists before assigning to its property
+
         if (!this.authScriptObject) {
-            console.warn("authScriptObject is not initialized in setCustomScriptObj. Creating a default structure.");
-            // Initialize with a minimal structure if it's unexpectedly null/undefined
-            // This indicates a potential logic flaw elsewhere if it reaches here without authScriptObject.
-             this.authScriptObject = new Harvestor(this.projectname, new Proxy("default", ""), "html", "", new Payload([]), {}, new Prepare([]), {}, {});
+            console.warn("authScriptObject is not initialized in setCustomScriptObj. Creating a default.");
+            this.getDefaultUHAuthScriptObject(); 
         }
         this.authScriptObject.customScript = customScript;
-        this.setUHAuthObjectToStorage();
+        // this.setUHAuthObjectToStorage(); // Let init() handle final storage
     }
 
     getUHAuthObjectFromStorage(){
@@ -174,7 +174,6 @@ export default class AuthScriptObjManager {
                 window.localStorage.setItem( this.AUTH_SESSION_OBJECT_NAME  + "-" + this.projectname , JSON.stringify(this.authScriptObject));
             } catch (e) {
                 console.error("Error stringifying or setting auth object to localStorage:", e);
-                // Potentially alert the user if storage fails, as changes might be lost.
                 alert("Warning: Could not save project changes to local storage. Storage might be full or corrupted.");
             }
         } else {
@@ -185,9 +184,8 @@ export default class AuthScriptObjManager {
     translateJsonToElement(harvesterObj, extractorObj) {
         if (!harvesterObj) {
             console.error("translateJsonToElement: harvesterObj is undefined. Cannot proceed.");
-            // Potentially set a default state or show an error
             this.authScriptObject = new Harvestor(this.projectname, new Proxy("default", ""), "html", "", new Payload([]), {}, new Prepare([]), {}, {});
-            this.setUHAuthObjectToStorage();
+            // this.setUHAuthObjectToStorage(); // Let init() handle storage
             return;
         }
 
@@ -201,8 +199,8 @@ export default class AuthScriptObjManager {
     }
 
     getAuthRootNodeDataBasedOnCategory(category) {
-        if (!this.authScriptObject) return []; // Should not happen if constructor/getUHAuthScriptObject works
-        if (category && category === "prepare") { // Use strict equality
+        if (!this.authScriptObject) return []; 
+        if (category && category === "prepare") { 
             return this.authScriptObject.prepare.harvestorPrepareNode;
         }
         return this.authScriptObject.payload.harvestorPayloadNode;
@@ -239,7 +237,6 @@ export default class AuthScriptObjManager {
 
         if (siblingNodesIndices.length <= 1) return harvesterNodes[selectedIndex]; // No siblings to swap with
 
-        // Find current position of selectedIndex within its siblings
         const currentPositionInSiblings = siblingNodesIndices.indexOf(selectedIndex);
         let newTargetGlobalIndex = -1;
 
@@ -254,13 +251,10 @@ export default class AuthScriptObjManager {
         }
         
         if (newTargetGlobalIndex !== -1 && newTargetGlobalIndex !== selectedIndex) {
-            // Swap elements in the main harvesterNodes array
             [harvesterNodes[newTargetGlobalIndex], harvesterNodes[selectedIndex]] = 
                 [harvesterNodes[selectedIndex], harvesterNodes[newTargetGlobalIndex]];
             
-            // Note: Reshuffling the entire payload might be heavy if only indices need update.
-            // For now, assuming reShufflePayload correctly reorders or re-indexes.
-            const reshuffled = this.reShufflePayload(harvesterNodes); // This re-creates the array.
+            const reshuffled = this.reShufflePayload(harvesterNodes); 
 
             if(nodeElement.category === "prepare"){
                 this.authScriptObject.prepare.harvestorPrepareNode = reshuffled;
@@ -268,11 +262,9 @@ export default class AuthScriptObjManager {
                 this.authScriptObject.payload.harvestorPayloadNode = reshuffled;
             }
             this.setUHAuthObjectToStorage();
-            // Find the moved element in the new reshuffled array to return it.
-            // This assumes elementId is unique and stable.
             return reshuffled.find(el => el.elementId === nodeElement.elementId);
         }
-        return harvesterNodes[selectedIndex]; // Return original if no move happened
+        return harvesterNodes[selectedIndex]; 
     }
     
     traverseExtractorNode(directionToTraverse, parent, selectedIndex){
@@ -299,28 +291,14 @@ export default class AuthScriptObjManager {
             [extractorFields[newTargetIndex], extractorFields[selectedIndex]] = 
                 [extractorFields[selectedIndex], extractorFields[newTargetIndex]];
             
-            // Update indices after swapping
             extractorFields[newTargetIndex].index = newTargetIndex;
             extractorFields[selectedIndex].index = selectedIndex;
             
             this.setUHAuthObjectToStorage();
-            return { ...extractorFields[newTargetIndex], parent }; // Return a copy with parent context
+            return { ...extractorFields[newTargetIndex], parent }; 
         }
-        // Return original if no move happened, with parent context
         return { ...extractorFields[selectedIndex], parent };
     }
-
-    // findNewTargetIndex was specific to the old traversal logic, can be removed if new logic is sound.
-    /*
-    findNewTargetIndex(traversedNodesIndices, selectedIndex){
-        let newTargetIndex = -1;
-        for(const key of traversedNodesIndices){
-            if(key == selectedIndex) { break }
-            newTargetIndex = key;
-        }
-        return newTargetIndex;
-    }
-    */
 
     saveCustomScript(script){
         if (!this.authScriptObject) {
@@ -340,35 +318,30 @@ export default class AuthScriptObjManager {
             return;
         }
         authRootNodeData[selectedIndex] = modifiedNodeElement;
-
-        // Reshuffling might be needed if parentage or order fundamentally changes,
-        // but if it's just properties, direct assignment is enough.
-        // Assuming reShufflePayload handles re-indexing or parent-child relationship updates correctly.
-        let payloadWithUpdatedParent = this.reShufflePayload(authRootNodeData); // This creates a new array.
+        let payloadWithUpdatedParent = this.reShufflePayload(authRootNodeData); 
         
         this.setAuthNodeDataBasedOnCategory(payloadWithUpdatedParent, modifiedNodeElement.category);
         this.setUHAuthObjectToStorage();
     }
 
     modifyExtractorGroupField(parent, childIndex, modifiedFieldElement) {
-        // This seems to be an alias or specific case for modifyExtractorField
         this.modifyExtractorField(parent, childIndex, modifiedFieldElement);
     }
 
     modifyExtractorField(parent, childIndex, modifiedFieldElement, isTransform = false) {
-        if (!parent || modifiedFieldElement === undefined) { // Allow childIndex to be 0
+        if (!parent || modifiedFieldElement === undefined) { 
             console.warn("modifyExtractorField: Invalid parent or modifiedFieldElement.", parent, modifiedFieldElement);
             return;
         }
 
         let targetArray;
         if (parent.isgroup) {
-            if (!Array.isArray(parent.fields)) parent.fields = []; // Initialize if not array
+            if (!Array.isArray(parent.fields)) parent.fields = []; 
             targetArray = parent.fields;
         } else if (parent.document && parent.document.document) {
             if (!Array.isArray(parent.document.document.documentDetails)) parent.document.document.documentDetails = [];
             targetArray = parent.document.document.documentDetails;
-        } else if (parent.elementDocumentType) { // Case where parent is a harvester node, and document structure needs to be created
+        } else if (parent.elementDocumentType) { 
              parent.document = parent.document || {};
              parent.document.document = parent.document.document || {};
              parent.document.document.documentDetails = parent.document.document.documentDetails || [];
@@ -378,7 +351,7 @@ export default class AuthScriptObjManager {
             return;
         }
         
-        if (childIndex === undefined || childIndex === null || childIndex < 0) { // Adding a new field
+        if (childIndex === undefined || childIndex === null || childIndex < 0) { 
             modifiedFieldElement.index = targetArray.length;
             targetArray.push(modifiedFieldElement);
         } else if (isTransform) {
@@ -386,27 +359,21 @@ export default class AuthScriptObjManager {
         } else {
             if (childIndex < targetArray.length) {
                 targetArray[childIndex] = modifiedFieldElement;
-            } else { // Index out of bounds for modification, treat as append
+            } else { 
                 modifiedFieldElement.index = targetArray.length;
                 targetArray.push(modifiedFieldElement);
             }
         }
 
-        // Reshuffle if __selector is added/modified and not at the beginning
         if (modifiedFieldElement && String(modifiedFieldElement.fieldName).toLowerCase() === '__selector') {
             const currentSelectorIndex = targetArray.findIndex(f => String(f.fieldName).toLowerCase() === '__selector');
-            if (currentSelectorIndex > 0) { // If __selector exists and is not the first element
+            if (currentSelectorIndex > 0) { 
                 const selectorElement = targetArray.splice(currentSelectorIndex, 1)[0];
-                selectorElement.index = 0; // Set its index to 0
-                targetArray.unshift(selectorElement); // Move to the beginning
-                // Re-index the rest of the fields
+                selectorElement.index = 0; 
+                targetArray.unshift(selectorElement); 
                 for (let i = 1; i < targetArray.length; i++) {
                     targetArray[i].index = i;
                 }
-            } else if (currentSelectorIndex === -1 && targetArray.length > 0 && String(targetArray[0].fieldName).toLowerCase() !== '__selector') {
-                // If selector was just added and is not first, this case might be complex.
-                // The above logic for `isTransform` or direct assignment should handle placement.
-                // This reShuffleExtratorFields call might be redundant if __selector logic is handled well during add/modify.
             }
         }
         this.setUHAuthObjectToStorage();
@@ -414,9 +381,8 @@ export default class AuthScriptObjManager {
 
     insertTransformedNode(childNodes, targetIndex, node){
         if (!Array.isArray(childNodes) || targetIndex < 0) return;
-        node.index = targetIndex; // Set index of the new node
+        node.index = targetIndex; 
         childNodes.splice(targetIndex, 0, node);
-        // Update indices of subsequent nodes
         for(var i = targetIndex + 1; i < childNodes.length ; i++) { 
             childNodes[i].index = i; 
         }
@@ -433,13 +399,12 @@ export default class AuthScriptObjManager {
         
         const parentElement = this.authScriptObject.payload.harvestorPayloadNode[parentIndex];
         
-        // Ensure crcFieldsArr exists on the modified data and fields have parent set
         if (modifiedCRCNodeData && Array.isArray(modifiedCRCNodeData.crcFieldsArr)) {
             modifiedCRCNodeData.crcFieldsArr.forEach(field => {
-                field.fieldParent = modifiedCRCNodeData.document; // Assuming document is the CRC node name/id
+                field.fieldParent = modifiedCRCNodeData.document; 
             });
         } else if (modifiedCRCNodeData) {
-            modifiedCRCNodeData.crcFieldsArr = []; // Initialize if not present
+            modifiedCRCNodeData.crcFieldsArr = []; 
         }
         
         parentElement.elementCRCFields = modifiedCRCNodeData;
@@ -465,73 +430,70 @@ export default class AuthScriptObjManager {
         }
 
         const targetArray = parentHarvesterNode.elementCRCFields.crcFieldsArr;
-        if (crcFieldIndex === undefined || crcFieldIndex === null || crcFieldIndex < 0 || crcFieldIndex > targetArray.length) { // Append if index is invalid or at the end
+        if (crcFieldIndex === undefined || crcFieldIndex === null || crcFieldIndex < 0 || crcFieldIndex > targetArray.length) { 
             modifiedCRCFieldElement.index = targetArray.length;
             targetArray.push(modifiedCRCFieldElement);
-        } else { // Modify existing or insert
+        } else { 
             modifiedCRCFieldElement.index = crcFieldIndex;
             targetArray[crcFieldIndex] = modifiedCRCFieldElement; 
         }
         this.setUHAuthObjectToStorage();
     }
 
-    modifyStartURL(parent, modifiedURL) { // parent argument seems unused
+    modifyStartURL(parent, modifiedURL) { 
         if (!this.authScriptObject) return;
         this.authScriptObject.startUrl = modifiedURL;
         this.setUHAuthObjectToStorage();
     }
 
-    modifySourceName(parent, modifiedSourceName) { // parent argument seems unused
+    modifySourceName(parent, modifiedSourceName) { 
         if (!this.authScriptObject) return;
         this.authScriptObject.source = modifiedSourceName;
         this.setUHAuthObjectToStorage();
     }
 
-    modifyOptionParams(parent, modifiedOptionParams) { // parent argument seems unused
+    modifyOptionParams(parent, modifiedOptionParams) { 
         if (!this.authScriptObject) return;
         this.authScriptObject.options = modifiedOptionParams;
         this.setUHAuthObjectToStorage();
     }
 
-    modifySettings(parent, modifiedSettings) { // parent argument seems unused
+    modifySettings(parent, modifiedSettings) { 
         if (!this.authScriptObject) return;
         this.authScriptObject.settings = modifiedSettings;
         this.setUHAuthObjectToStorage();
     }
 
-    modifyParam(parent, modifiedParam) { // parent argument seems unused
+    modifyParam(parent, modifiedParam) { 
         if (!this.authScriptObject) return;
         this.authScriptObject.params = modifiedParam;
         this.setUHAuthObjectToStorage();
     }
 
-    reShuffleExtratorFields(extratorFieldArr) { // This was specific for __selector, ensure it's still needed
+    reShuffleExtratorFields(extratorFieldArr) { 
         if (!Array.isArray(extratorFieldArr)) return [];
         
         const selectorIndex = extratorFieldArr.findIndex(field => String(field.fieldName).toLowerCase() === '__selector');
         
-        if (selectorIndex > 0) { // If __selector exists and is not already first
+        if (selectorIndex > 0) { 
             const selectorElement = extratorFieldArr.splice(selectorIndex, 1)[0];
             extratorFieldArr.unshift(selectorElement);
         }
-        // Re-index all fields
         extratorFieldArr.forEach((field, idx) => field.index = idx);
         return extratorFieldArr;
     }
 
-    // getChildren seems unused, consider removing if not called elsewhere
     getChildren(list, selectedElementId) {
         if (!Array.isArray(list)) return [];
         return list.filter(item => item.elementParent === selectedElementId);
     }
 
-    // getNestedChildren seems unused, consider removing
     getNestedChildren(nodeElement, parentId, childArrAccumulator) {
         if (!nodeElement || !Array.isArray(nodeElement.childNodes)) return childArrAccumulator;
         
         for (const childNode of nodeElement.childNodes) {
-            if (childNode.nodeType === "Harvester") { // Assuming nodeType is a string
-                childArrAccumulator.push(childNode.text); // Assuming 'text' is the ID
+            if (childNode.nodeType === "Harvester") { 
+                childArrAccumulator.push(childNode.text); 
                 this.getNestedChildren(childNode, childNode.text, childArrAccumulator);
             }
         }
@@ -549,7 +511,6 @@ export default class AuthScriptObjManager {
             let rootNodeData = this.getAuthRootNodeDataBasedOnCategory(nodeElementContext.category);
             if (!Array.isArray(rootNodeData)) return;
 
-            // Find all descendants of the node to be removed
             let allNodesToRemoveIds = [nodeIdToRemove];
             let queue = [nodeIdToRemove];
             while(queue.length > 0) {
@@ -573,7 +534,6 @@ export default class AuthScriptObjManager {
             let parentNodeArrObj = this.getExtractorParentArrObj(nodeElementContext.parent.currentContext);
             if (Array.isArray(parentNodeArrObj) && nodeElementContext.selectedIndex >= 0 && nodeElementContext.selectedIndex < parentNodeArrObj.length) {
                 parentNodeArrObj.splice(nodeElementContext.selectedIndex, 1);
-                // Re-index remaining fields
                 parentNodeArrObj.forEach((field, idx) => field.index = idx);
             }
         } else if (nodetype === 'CRC') {
@@ -588,16 +548,15 @@ export default class AuthScriptObjManager {
                  console.error("removeNodeFromObject (CRCField): Context for parent harvester node is missing.");
                  return;
              }
-            const parentHarvesterNodeId = nodeElementContext.parent.parent.text; // ID of the Harvester node
+            const parentHarvesterNodeId = nodeElementContext.parent.parent.text; 
             const parentHarvesterNodeIndex = this.authScriptObject.payload.harvestorPayloadNode.findIndex(e => e.elementId === parentHarvesterNodeId);
 
             if (parentHarvesterNodeIndex !== -1) {
                 const crcNode = this.authScriptObject.payload.harvestorPayloadNode[parentHarvesterNodeIndex].elementCRCFields;
                 if (crcNode && Array.isArray(crcNode.crcFieldsArr)) {
-                    const crcFieldIndex = crcNode.crcFieldsArr.findIndex(e => e.fieldName === nodeIdToRemove); // Assuming nodeIdToRemove is fieldName
+                    const crcFieldIndex = crcNode.crcFieldsArr.findIndex(e => e.fieldName === nodeIdToRemove); 
                     if (crcFieldIndex !== -1) {
                         crcNode.crcFieldsArr.splice(crcFieldIndex, 1);
-                        // Re-index
                         crcNode.crcFieldsArr.forEach((field, idx) => field.index = idx);
                     }
                 }
@@ -611,7 +570,7 @@ export default class AuthScriptObjManager {
     splitUnifiedObject() {
         if (!this.authScriptObject) {
             console.error("splitUnifiedObject: authScriptObject is not initialized.");
-            this.harvestingObject = {}; // Default empty objects
+            this.harvestingObject = {}; 
             this.extractorObject = {};
             return;
         }
@@ -622,7 +581,7 @@ export default class AuthScriptObjManager {
 
         if (this.authScriptObject.payload && Array.isArray(this.authScriptObject.payload.harvestorPayloadNode)) {
             this.authScriptObject.payload.harvestorPayloadNode.forEach((item, index) => {
-                if (item) { // Ensure item is not null/undefined
+                if (item) { 
                     if (typeof item.elementOptions === 'string') {
                         try { item.elementOptions = JSON.parse(item.elementOptions); }
                         catch (e) { console.warn("Failed to parse elementOptions JSON:", item.elementOptions, e); item.elementOptions = {}; }
@@ -632,13 +591,13 @@ export default class AuthScriptObjManager {
 
                     if (item.elementCRCFields) {
                         let crcObj = HarvesterConfigPayload.getCRCFields(item.elementCRCFields);
-                        if (harvesterPayloadItem) harvesterPayloadItem.crc = crcObj.definition; // Add to the correct item
+                        if (harvesterPayloadItem) harvesterPayloadItem.crc = crcObj.definition; 
                         crcDeclaration.push(crcObj.declaration);
                     }
                     if (item.elementDocumentType && item.document && item.document.document) {
                         let e = ExtractorConfigPayload.getExtractorFileObject(item.document.document, item.elementDocumentType);
-                        if (item.elementDocumentType === "listing") { // Use strict equality
-                            e.listing = e.listing || {}; // Ensure objects exist
+                        if (item.elementDocumentType === "listing") { 
+                            e.listing = e.listing || {}; 
                             e.job = e.job || {};
                         }
                         extractorObj = { ...extractorObj, ...e };
@@ -650,7 +609,7 @@ export default class AuthScriptObjManager {
         let harvesterPrepare = [];
         if (this.authScriptObject.prepare && Array.isArray(this.authScriptObject.prepare.harvestorPrepareNode)) {
             this.authScriptObject.prepare.harvestorPrepareNode.forEach((item) => {
-                if (item) { // Ensure item is not null/undefined
+                if (item) { 
                      if (typeof item.elementOptions === 'string') {
                         try { item.elementOptions = JSON.parse(item.elementOptions); }
                         catch (e) { console.warn("Failed to parse elementOptions JSON for prepare node:", item.elementOptions, e); item.elementOptions = {}; }
@@ -685,7 +644,7 @@ export default class AuthScriptObjManager {
         }
         let sourceVal = harvestData["source"];
         let typeVal = harvestData["type"];
-        let params = harvestData["params"]; // Can be undefined
+        let params = harvestData["params"]; 
         let startUrlVal = harvestData["startUrl"] || (params ? params.startUrl : undefined);
         let proxyVal = harvestData["proxy"];
         let payloadArray = harvestData["payload"];
@@ -695,21 +654,20 @@ export default class AuthScriptObjManager {
 
         let prepareNodes = this.createPrepareHarvestNodes(prepareArray);
         let payloadNodes = this.createPayloadHarvestNodes(payloadArray, extractorObj);
-        let proxy = this.createProxy(proxyVal || {ip: "default", port: ""}); // Default proxy if undefined
+        let proxy = this.createProxy(proxyVal || {ip: "default", port: ""}); 
 
         this.authScriptObject = new Harvestor(sourceVal, proxy, typeVal, startUrlVal, payloadNodes, params, prepareNodes, options, settings);
-        this.setUHAuthObjectToStorage();
-        // this.testAuthScriptJSObject(this.authScriptObject); // For debugging
+        // this.setUHAuthObjectToStorage(); // Let init() handle final storage
     }
 
     createPrepareHarvestNodes(prepareArray) {
         let prepareHarvestNodes = [];
         prepareArray = Array.isArray(prepareArray) ? prepareArray : [];
         prepareArray.forEach(element => {
-            if (element) { // Check if element is not null/undefined
+            if (element) { 
                 let elementFactory = new ElementFactory();
-                let elementNode = elementFactory.createElement(element, null); // extractorObj is null for prepare nodes
-                if (elementNode) { // Check if createElement returned a node
+                let elementNode = elementFactory.createElement(element, null); 
+                if (elementNode) { 
                     elementNode.category = "prepare";
                     prepareHarvestNodes.push(elementNode);
                 }
@@ -722,10 +680,10 @@ export default class AuthScriptObjManager {
         let payloadHarvestNodes = [];
         payloadArray = Array.isArray(payloadArray) ? payloadArray : [];
         payloadArray.forEach(element => {
-            if (element) { // Check if element is not null/undefined
+            if (element) { 
                 let elementFactory = new ElementFactory();
                 let elementNode = elementFactory.createElement(element, extractorObj);
-                if (elementNode) { // Check if createElement returned a node
+                if (elementNode) { 
                     elementNode.category = "payload";
                     payloadHarvestNodes.push(elementNode);
                 }
@@ -735,8 +693,7 @@ export default class AuthScriptObjManager {
     }
 
     createProxy(proxyKey) {
-        if (!proxyKey || typeof proxyKey.ip === 'undefined') { // Provide defaults if proxyKey is malformed
-            // console.warn("ProxyKey is undefined or malformed, using default proxy.", proxyKey);
+        if (!proxyKey || typeof proxyKey.ip === 'undefined') { 
             return new Proxy("default", "");
         }
         return new Proxy(proxyKey.ip, proxyKey.port);
@@ -754,17 +711,7 @@ export default class AuthScriptObjManager {
     }
 
     testAuthScriptJSObject(uhAuthScriptObj) {
-        // For debugging purposes
         console.log("Current AuthScript Object:", uhAuthScriptObj);
-        // Example: Check if conversion to JSON and back works
-        // try {
-        //     const jsonString = JSON.stringify(uhAuthScriptObj);
-        //     console.log("Serialized AuthScript Object:", jsonString);
-        //     const parsedObj = JSON.parse(jsonString);
-        //     console.log("Parsed AuthScript Object (should be deep equal to original):", parsedObj);
-        // } catch (e) {
-        //     console.error("Error during testAuthScriptJSObject serialization/deserialization:", e);
-        // }
     }
 
     createDefaultHarvestObj(sourceName, startUrl, type, ip, port, payload, params) {
@@ -777,30 +724,21 @@ export default class AuthScriptObjManager {
         harvestObj.startUrl = startUrl || "http://example.com";
         harvestObj.payload = Array.isArray(payload) ? payload : [];
         harvestObj.params = params || {};
-        harvestObj.options = {}; // Add default empty options
-        harvestObj.settings = {}; // Add default empty settings
-        harvestObj.prepare = []; // Add default empty prepare array
+        harvestObj.options = {}; 
+        harvestObj.settings = {}; 
+        harvestObj.prepare = []; 
         return harvestObj;
     }
 
     createDefaultExtractorObj() {
         let extractorObj = { source: sessionStorage["newProject"] || "DefaultSource" };
-        // Initialize with common document types if needed
-        // e.g., extractorObj.listing = { documentTypeName: "listing", documentDetails: [] };
         return extractorObj;
     }
 
     reShufflePayload(payloadNodes) {
         if (!Array.isArray(payloadNodes)) return [];
         
-        // This is a complex operation. The goal is to ensure nodes are ordered
-        // such that parents appear before their children if a strict tree order is needed.
-        // A simpler approach if only top-level items need to be sorted or if parent-child
-        // relationships are maintained by reference within the objects themselves:
-        
-        // Create a map of nodes by ID for quick lookup
         const nodeMap = new Map(payloadNodes.map(node => [node.elementId, node]));
-        // Create a map of children for each parent
         const childrenMap = new Map();
         payloadNodes.forEach(node => {
             if (node.elementParent && node.elementParent !== "root") {
@@ -818,14 +756,9 @@ export default class AuthScriptObjManager {
             if (!nodeId || visited.has(nodeId)) return;
             
             const node = nodeMap.get(nodeId);
-            if (!node) return; // Node not found in map (should not happen if payload is consistent)
+            if (!node) return; 
 
             visited.add(nodeId);
-            
-            // Visit children first (if a specific child-first order is desired for some reason)
-            // or visit parent then children (more common for tree output)
-
-            // For parent-first output (typical tree traversal):
             result.push(node);
             
             const children = childrenMap.get(nodeId);
@@ -834,43 +767,24 @@ export default class AuthScriptObjManager {
             }
         }
 
-        // Start visitation from root nodes
         payloadNodes.forEach(node => {
             if (node.elementParent === "root") {
                 visit(node.elementId);
             }
         });
         
-        // Add any remaining nodes that might not have been part of the root-based traversal
-        // (e.g., orphaned nodes, though ideally the data structure prevents this)
         payloadNodes.forEach(node => {
             if (!visited.has(node.elementId)) {
-                // This indicates an issue with the data structure or traversal logic if nodes are missed.
-                // console.warn("reShufflePayload: Node not visited, adding at end:", node.elementId);
-                result.push(node); // Add them, but investigate why they weren't part of tree.
+                result.push(node); 
             }
         });
         
-        // Re-index based on the new order
-        result.forEach((node, index) => {
-            // It's generally not good practice to mutate the index property directly here
-            // unless the 'index' property is purely for display order and not a key.
-            // If 'index' is a critical part of its identity or key, this could be problematic.
-            // For now, assuming it's for order.
-            // node.index = index; // If you have an 'index' property to update for order
-        });
-
         return result;
     }
     
-    // getAllParentNode and removeAlreadyExisting were part of the old reShufflePayload.
-    // The new reShufflePayload uses a different graph traversal approach.
-    // These can be removed if the new reShufflePayload is confirmed to work correctly.
-
     getExtractorParentArrObj(parentContext) {
         if (!parentContext) return null;
 
-        // parentContext could be an ExtractorGroup object or a HarvesterNode object
         if (parentContext.isgroup && Array.isArray(parentContext.fields)) {
             return parentContext.fields;
         } else if (parentContext.document && parentContext.document.document && Array.isArray(parentContext.document.document.documentDetails)) {
@@ -888,7 +802,6 @@ export default class AuthScriptObjManager {
 
     isHarvesterEnabledForExtractor(parentContext){
         if (!parentContext) return false;
-        // An extractor can be added if the parent is an ExtractorGroup or if it's a Harvester node that supports a document type
         return !!(parentContext.isgroup || parentContext.elementDocumentType);
     }
 }
